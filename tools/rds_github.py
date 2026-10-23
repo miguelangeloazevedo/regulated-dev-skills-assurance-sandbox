@@ -1,5 +1,6 @@
 """GitHub authority predicates; only a trusted live invocation has provenance."""
 import re
+import os
 import json
 import base64
 import subprocess
@@ -20,8 +21,17 @@ def _api(path, paginate=False) -> Any:
         command.extend(['--paginate', '--slurp'])
         path += ('&' if '?' in path else '?') + 'per_page=100'
     command.append(path)
+    environment = dict(os.environ)
+    reader = environment.pop('RDS_HOST_READ_TOKEN', '')
+    if reader:
+        repo = '/'.join(path.split('/')[1:3])
+        if (environment.get('GITHUB_ACTIONS') != 'true'
+                or environment.get('GITHUB_REPOSITORY') != repo
+                or environment.get('GITHUB_WORKFLOW_REF') != repo + '/.github/workflows/release.yml@refs/heads/main'):
+            raise HostReadError('Privileged policy reader is restricted to the trusted release job.')
+        environment['GH_TOKEN'] = reader
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(command, capture_output=True, text=True, timeout=30, env=environment)
         if result.returncode:
             raise HostReadError('Host read unavailable; check identity, access and endpoint configuration.')
         value = json.loads(result.stdout)
@@ -135,6 +145,8 @@ def evaluate_github(policy, facts, target_commit, pr_number):
             reasons.append('ENVIRONMENT_PROTECTION')
         latest = {}
         for review in sorted(facts['reviews'], key=lambda r: r['id']):
+            if review['state'] not in ('APPROVED', 'DISMISSED', 'CHANGES_REQUESTED', 'COMMENTED', 'PENDING'):
+                reasons.append('UNKNOWN_REVIEW_STATE')
             if review['state'] in ('APPROVED', 'DISMISSED', 'CHANGES_REQUESTED'):
                 latest[review['user']['id']] = review
         eligible = [r for actor, r in latest.items() if actor in policy['reviewer_ids']

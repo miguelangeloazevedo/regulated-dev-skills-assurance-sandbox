@@ -1,4 +1,5 @@
 {
   "synthetic": true,
-  "purpose": "Non-production authority/permission fixture. No real-device execution, approval or customer information."
+  "run_id": "39900056488",
+  "purpose": "Permission and human-authority test only. No device or customer evidence."
 }
