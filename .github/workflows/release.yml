@@ -1,0 +1,62 @@
+name: controlled-synthetic-release
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        required: true
+        type: string
+      commit:
+        required: true
+        type: string
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+concurrency:
+  group: synthetic-release
+  cancel-in-progress: false
+jobs:
+  probes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Restricted credential probes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYNTHETIC_PR: ${{ inputs.pr }}
+          SYNTHETIC_COMMIT: ${{ inputs.commit }}
+        run: python3 probe_permissions.py
+  release:
+    needs: probes
+    environment: synthetic-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify current authority against exact content
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYNTHETIC_PR: ${{ inputs.pr }}
+          SYNTHETIC_COMMIT: ${{ inputs.commit }}
+        run: >-
+          python3 tools/rds_assurance.py github-preflight
+          --repo "$GITHUB_REPOSITORY" --commit "$SYNTHETIC_COMMIT"
+          --pr "$SYNTHETIC_PR" --environment synthetic-release
+          --policy .rds-policy.json --policy-commit "$GITHUB_SHA"
+      - name: Publish authorised synthetic result only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYNTHETIC_PR: ${{ inputs.pr }}
+          SYNTHETIC_COMMIT: ${{ inputs.commit }}
+        run: python3 controller.py release

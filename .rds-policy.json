@@ -1,0 +1,9 @@
+{
+  "repository": "miguelangeloazevedo/regulated-dev-skills-assurance-sandbox",
+  "branch": "main",
+  "environment": "synthetic-release",
+  "reviewer_ids": [
+    183697641
+  ],
+  "workflow_path": ".github/workflows/release.yml"
+}

@@ -1,0 +1,22 @@
+name: synthetic-request-controller
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  create-request:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Create fixed synthetic request and dispatch protected release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 controller.py prepare
