@@ -94,7 +94,7 @@ def validate_bundle(root):
                 except (OSError, ValueError):
                     issue('ASSURANCE_BINDING', 'Bound source is unavailable or outside root.')
                     continue
-                if actual != digest:
+                if actual != digest and item.get('status') != 'stale':
                     issue('ASSURANCE_STALE', 'Bound content has changed; reconsider the claim/review.')
             review = item.get('review', {})
             if not isinstance(review, dict):
@@ -118,6 +118,16 @@ def validate_bundle(root):
                         or not _public_ref(item.get('evidence')) or not _date(item.get('observed_on'))
                         or not re.fullmatch(r'[a-f0-9]{40}', str(item.get('skills_revision')))):
                     issue('ASSURANCE_MEASUREMENT', 'Measured claim needs exact configuration, revision, bindings, observation date and evidence.')
+                required_config = (('harness', 'harness_version', 'provider', 'model', 'model_version')
+                                   if item['status'] == 'instruction_observed' else
+                                   ('host', 'repository', 'policy_revision', 'workflow_revision', 'workflow', 'credential', 'runner'))
+                if (not isinstance(config, dict)
+                        or not all(isinstance(config.get(k), str) and config[k].strip() for k in required_config)
+                        or (item['status'] == 'host_observed' and
+                            (not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', str(config.get('repository')))
+                             or any(not re.fullmatch(r'(?:[a-f0-9]{40}|[a-f0-9]{64})', str(config.get(k)))
+                                    for k in ('policy_revision', 'workflow_revision'))))):
+                    issue('ASSURANCE_CONFIGURATION', 'Measured state needs its applicable exact harness/model or host/policy/credential configuration.')
             if kind == 'regulatory-review':
                 sources = item.get('sources')
                 if (item.get('basis') not in ('obligation', 'interpretation', 'repository_rule')
@@ -130,6 +140,8 @@ def validate_bundle(root):
                 validation = item.get('validation')
                 if (not isinstance(validation, dict)
                         or not all(validation.get(k) for k in ('intended_use', 'revision', 'accepted_by'))
+                        or not re.fullmatch(r'(?:[0-9a-f]{40}|[0-9a-f]{64})', str(validation.get('revision')))
+                        or not bindings
                         or not _date(validation.get('accepted_on')) or not _public_ref(validation.get('evidence'))
                         or item.get('gaps') != []
                         or not all(item.get('controls', {}).get(k) == 'assessed' for k in
@@ -148,12 +160,25 @@ def render_summary(root):
         data = json.loads((Path(root) / 'assurance' / (kind + '.json')).read_text(encoding='utf-8'))
         lines = ['# ' + kind.replace('-', ' ').capitalize(), '',
                  'These are declarations, not authenticated decisions or product certification.', '',
-                 'Generated from `assurance/' + kind + '.json`. Structural checks do not authenticate the underlying evidence.', '']
+                 'Generated from [the source register](../../assurance/' + kind + '.json). Structural checks do not authenticate the underlying evidence.', '']
+        if data.get('coverage'):
+            lines.extend(['## Review coverage', '', '```json',
+                          json.dumps(data['coverage'], indent=2, sort_keys=True), '```', ''])
         for item in data['items']:
             lines.extend(['## ' + html.escape(item['id']), '',
                           '**State:** ' + item['status'], '', html.escape(item['scope']), ''])
             if item.get('limitations'):
                 lines.extend(['**Limits:** ' + html.escape(item['limitations']), ''])
+            for field, label in [('basis', 'Basis'), ('classes', 'Classes'), ('jurisdictions', 'Jurisdictions'),
+                                 ('skills_revision', 'Skills revision'), ('observed_on', 'Observed on'),
+                                 ('assessment_status', 'Assessment status')]:
+                if field in item:
+                    lines.extend(['**' + label + ':** ' + html.escape(str(item[field])), ''])
+            for field, label in [('configuration', 'Configuration'), ('bindings', 'Content bindings'),
+                                 ('controls', 'Controls'), ('gaps', 'Open gaps')]:
+                if field in item:
+                    lines.extend(['**' + label + ':**', '', '```json',
+                                  json.dumps(item[field], indent=2, sort_keys=True), '```', ''])
             if item.get('sources'):
                 lines.extend(['**Sources:** ' + '; '.join(html.escape(s['title'] + ' (' + s['edition'] + ') ' + s['locator'])
                                                           for s in item['sources']), ''])

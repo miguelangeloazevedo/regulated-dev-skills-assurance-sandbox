@@ -47,6 +47,7 @@ jobs:
       - name: Verify current authority against exact content
         env:
           GH_TOKEN: ${{ github.token }}
+          RDS_HOST_READ_TOKEN: ${{ secrets.RDS_HOST_READ_TOKEN }}
           SYNTHETIC_PR: ${{ inputs.pr }}
           SYNTHETIC_COMMIT: ${{ inputs.commit }}
         run: >-
@@ -57,6 +58,7 @@ jobs:
       - name: Publish authorised synthetic result only
         env:
           GH_TOKEN: ${{ github.token }}
+          RDS_HOST_READ_TOKEN: ${{ secrets.RDS_HOST_READ_TOKEN }}
           SYNTHETIC_PR: ${{ inputs.pr }}
           SYNTHETIC_COMMIT: ${{ inputs.commit }}
         run: python3 controller.py release

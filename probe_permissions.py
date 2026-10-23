@@ -57,6 +57,17 @@ def probe(repo, pr_number, commit, run_id, request=request):
         raise ValueError('Synthetic request revision or repository does not match.')
     results = []
 
+    def read_list(path):
+        values = []
+        for page in range(1, 101):
+            batch = read(path + '?per_page=100&page=' + str(page))
+            if not isinstance(batch, list):
+                raise RuntimeError('Malformed target snapshot; denial remains inconclusive.')
+            values.extend(batch)
+            if len(batch) < 100:
+                return values
+        raise RuntimeError('Snapshot pagination limit reached; denial remains inconclusive.')
+
     def attempt(name, method, endpoint, payload, snapshot):
         before = snapshot()
         status, _ = request(method, prefix + endpoint, payload)
@@ -69,7 +80,7 @@ def probe(repo, pr_number, commit, run_id, request=request):
 
     attempt('unauthorised-approval', 'POST', '/pulls/' + str(pr_number) + '/reviews',
             {'commit_id': commit, 'event': 'APPROVE', 'body': 'Synthetic unauthorised permission probe, not a human approval.'},
-            lambda: read('/pulls/' + str(pr_number) + '/reviews?per_page=100'))
+            lambda: read_list('/pulls/' + str(pr_number) + '/reviews'))
     for name, path in [('protected-record', 'synthetic-record.json'), ('protected-policy', '.rds-policy.json'),
                        ('protected-workflow', '.github/workflows/release.yml')]:
         endpoint = '/contents/' + path
@@ -82,7 +93,7 @@ def probe(repo, pr_number, commit, run_id, request=request):
             {'tag_name': 'denied-probe-' + run_id, 'target_commitish': commit,
              'name': 'Synthetic denied probe', 'body': 'Synthetic permission probe only.',
              'draft': False, 'prerelease': True, 'make_latest': 'false', 'generate_release_notes': False},
-            lambda: [r['id'] for r in read('/releases?per_page=100')])
+            lambda: [r['id'] for r in read_list('/releases')])
     return {'status': 'observed_denials', 'repository': repo, 'commit': commit,
             'run_id': run_id, 'scope': 'Restricted host token, not agent/model behavior or product verification.',
             'results': results}
